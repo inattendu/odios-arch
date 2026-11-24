@@ -1,14 +1,10 @@
 ---
 # install.sh never selects display elsewhere; this covers direct playbook runs.
-- name: Read dpkg architecture
-  ansible.builtin.command: dpkg --print-architecture
-  register: display_dpkg_arch
-  changed_when: false
-
+# Arch n'a pas dpkg : on mappe l'archi machine vers le style deb attendu.
 - name: Assert display is available on this architecture
   ansible.builtin.assert:
-    that: display_dpkg_arch.stdout in display_archs
-    fail_msg: "display needs {{ display_archs | join(' or ') }}, this system is {{ display_dpkg_arch.stdout }}"
+    that: ansible_architecture in display_archs
+    fail_msg: "display needs {{ display_archs | join(' or ') }}, this system is {{ ansible_architecture }}"
     quiet: true
 
 # A user manager already up keeps its old group list: on a live install the
@@ -23,11 +19,10 @@
   become: true
 
 - name: Install odio-kiosk
-  ansible.builtin.apt:
+  community.general.pacman:
     name:
-      - "odio-kiosk>={{ display_apt_version }}"
+      - "odio-kiosk"
     state: present
-    install_recommends: false
   become: true
   register: display_apt
   notify: Restart odio-kiosk

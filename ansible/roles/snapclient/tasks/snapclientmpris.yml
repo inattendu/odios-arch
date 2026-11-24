@@ -1,9 +1,8 @@
 ---
 - name: Install snapclientmpris
-  ansible.builtin.apt:
-    name: "snapclientmpris>={{ snapclient_snapclientmpris_version }}"
+  community.general.pacman:
+    name: "snapclientmpris"
     state: present
-    install_recommends: false
   become: true
   notify: Restart snapclientmpris
 

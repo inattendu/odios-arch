@@ -1,5 +1,9 @@
 context.modules = [
 {   name = libpipewire-module-snapcast-discover
+    # Arch/Manjaro: ce module n'est pas fourni par le PipeWire d'Arch. Sans
+    # `ifexists`, son chargement est obligatoire et fait ÉCHOUER tout pipewire
+    # au démarrage (plus aucun audio). ifexists = chargé seulement s'il existe.
+    flags = [ ifexists ]
     args = {
         stream.rules = [
             {   matches = [

@@ -27,11 +27,10 @@
         service_name: mpDris2.service
 
     - name: Remove dependencies that are no longer required and purge their configuration files
-      ansible.builtin.apt:
+      community.general.pacman:
         name:
           - mpdris2
         state: absent
-        purge: true
       become: true
       register: mpd_mpdris2_purge
 
@@ -56,12 +55,11 @@
       become: "{{ become_for_target_user }}"
 
 - name: Install mpd2mpris v{{ mpd_mpd2mpris_apt_version }}
-  ansible.builtin.apt:
+  community.general.pacman:
     name:
-      - "mpd2mpris>={{ mpd_mpd2mpris_apt_version }}"
-      - python3-musicbrainzngs
+      - "mpd2mpris"
+      - python-musicbrainzngs
     state: present
-    install_recommends: false
   become: true
   notify: Restart mpd2mpris
 

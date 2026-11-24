@@ -1,0 +1,16 @@
+# Réplique le postinst .deb : groupes system + répertoires d'état odio.
+post_install() {
+  getent group odio    >/dev/null || groupadd -r odio
+  getent group odioctl >/dev/null || groupadd -r odioctl
+  install -d -o root -g odio -m 2770 /var/lib/odio
+  install -d -o root -g odio -m 2775 /var/cache/odio
+}
+
+post_upgrade() {
+  post_install
+}
+
+post_remove() {
+  # On laisse /var/lib/odio (state.json) ; on purge le cache.
+  rm -rf /var/cache/odio
+}

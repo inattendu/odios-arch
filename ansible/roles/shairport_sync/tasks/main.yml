@@ -10,10 +10,9 @@
   when: ansible_role_name not in odios_prior_roles
   block:
     - name: Install shairport-sync
-      ansible.builtin.apt:
+      community.general.pacman:
         name: shairport-sync
         state: present
-        install_recommends: false
       become: true
       notify: Restart shairport-sync
 
@@ -36,6 +35,23 @@
         remote_src: true
         force: false
       become: "{{ become_for_target_user }}"
+
+# Le build Arch de shairport-sync est en AirPlay 2, qui exige le daemon PTP
+# nqptp (service SYSTÈME). shairport-sync en dépend (donc présent), mais les
+# paquets Arch n'activent jamais les services : sans ça shairport-sync crashe
+# en boucle ("can not find the nqptp service"). Debian l'activait via le .deb.
+- name: Ensure nqptp is installed (required by AirPlay 2)
+  community.general.pacman:
+    name: nqptp
+    state: present
+  become: true
+
+- name: Enable and start nqptp system service (AirPlay 2 PTP clock)
+  ansible.builtin.systemd:
+    name: nqptp.service
+    enabled: true
+    state: "{{ 'started' if install_mode == 'live' else omit }}"
+  become: true
 
 - name: Backup shairport-sync config before changes
   ansible.builtin.include_tasks: "../../../tasks/backup_conf_before.yml"

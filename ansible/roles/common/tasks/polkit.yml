@@ -1,9 +1,8 @@
 ---
 - name: Install polkit
-  ansible.builtin.apt:
-    name: polkitd
+  community.general.pacman:
+    name: polkit
     state: present
-    install_recommends: false
   become: true
 
 - name: Ensure polkit rules directory exists

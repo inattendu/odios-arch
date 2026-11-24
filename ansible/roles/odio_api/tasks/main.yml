@@ -6,10 +6,9 @@
     scaffold_version: '2026.5.0b1'
 
 - name: Install go-odio-api v{{ odio_api_apt_version }}
-  ansible.builtin.apt:
-    name: "odio-api>={{ odio_api_apt_version }}"
+  community.general.pacman:
+    name: "odio-api"
     state: present
-    install_recommends: false
   become: true
   notify: Restart odio-api
 

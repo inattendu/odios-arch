@@ -1,0 +1,29 @@
+# Maintainer: odios-arch fork
+# Port Arch du .deb mpd-discplayer (build CGO natif).
+pkgname=mpd-discplayer
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="MPD disc player daemon for CD and USB automation (odio)"
+arch=('x86_64')
+url="https://github.com/b0bbywan/go-mpd-discplayer"
+license=('MIT')
+depends=('mpd' 'libcdio-paranoia' 'libdiscid' 'libgudev' 'alsa-lib')
+makedepends=('go' 'git' 'pkgconf')
+_tag="v$pkgver"
+source=("$pkgname::git+https://github.com/b0bbywan/go-mpd-discplayer.git#tag=$_tag")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname"
+  export CGO_ENABLED=1 GOFLAGS="-trimpath -mod=mod"
+  go build -ldflags "-s -w -X 'github.com/b0bbywan/go-mpd-discplayer/cmd.AppVersion=$pkgver'" \
+    -o mpd-discplayer .
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 mpd-discplayer "$pkgdir/usr/bin/mpd-discplayer"
+  install -Dm644 share/config.yaml "$pkgdir/usr/share/mpd-discplayer/config.yaml"
+  install -Dm644 debian/mpd-discplayer.service "$pkgdir/usr/lib/systemd/user/mpd-discplayer.service"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

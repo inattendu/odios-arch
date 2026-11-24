@@ -53,8 +53,8 @@
 # Ships /usr/bin/odioctl, the user units and /etc/sudoers.d/odioctl. Units are
 # not auto-enabled by the postinst, which does create the empty `odioctl` group.
 - name: Install odioctl v{{ upgrade_odioctl_apt_version }}
-  ansible.builtin.apt:
-    name: "odioctl>={{ upgrade_odioctl_apt_version }}"
+  community.general.pacman:
+    name: "odioctl"
     state: present
   become: true
   register: upgrade_odioctl_apt
@@ -124,20 +124,6 @@
     wanted_by: sockets.target
   when: upgrade_pre_proxy_socket | bool
 
-- name: Install unattended-upgrades (image mode)
-  ansible.builtin.apt:
-    name: unattended-upgrades
-    state: present
-    install_recommends: false
-  become: true
-  when: install_mode == "image"
-
-- name: Allow Raspberry Pi archive in unattended-upgrades (image mode)
-  ansible.builtin.copy:
-    src: 52odio-unattended-upgrades
-    dest: /etc/apt/apt.conf.d/52odio-unattended-upgrades
-    owner: root
-    group: root
-    mode: '0644'
-  become: true
-  when: install_mode == "image"
+# unattended-upgrades est spécifique Debian (apt). Sur Arch, les mises à jour
+# système passent par pacman et ne sont pas automatisées ici — rôle laissé à
+# l'administrateur. (odioctl gère la MAJ applicative odio via le dépôt [odios].)

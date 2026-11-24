@@ -1,7 +1,7 @@
 ---
 - name: Install qbzd v{{ qbzd_apt_version }}
-  ansible.builtin.apt:
-    name: "qbzd>={{ qbzd_apt_version }}"
+  community.general.pacman:
+    name: "qbzd"
     state: present
   become: true
   notify: Restart qbzd

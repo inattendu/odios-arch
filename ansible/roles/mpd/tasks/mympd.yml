@@ -9,10 +9,9 @@
              is version('2026.10.0b1', '<', version_type='pep440')) }}
 
 - name: Install mympd v{{ mpd_mympd_apt_version }}
-  ansible.builtin.apt:
-    name: "mympd>={{ mpd_mympd_apt_version }}"
+  community.general.pacman:
+    name: "mympd"
     state: present
-    install_recommends: false
   become: true
   notify: Restart mympd
 

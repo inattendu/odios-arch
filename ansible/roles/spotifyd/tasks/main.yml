@@ -7,8 +7,8 @@
     scaffold_version: '2026.11.0rc1'
 
 - name: Install spotifyd v{{ spotifyd_apt_version }}
-  ansible.builtin.apt:
-    name: "spotifyd>={{ spotifyd_apt_version }}"
+  community.general.pacman:
+    name: "spotifyd"
     state: present
   become: true
   notify: Restart spotifyd

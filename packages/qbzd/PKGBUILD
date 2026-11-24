@@ -1,0 +1,27 @@
+# Maintainer: odios-arch fork
+# qbzd : le binaire Rust publié (daemon Qobuz Connect) tourne nativement sur
+# Arch (ldd : libasound/libssl/libc seulement). On repackage le .deb publié
+# plutôt que de recompiler l'énorme workspace qbz avec patches version-pinnés.
+pkgname=qbzd
+pkgver=2.1.2
+pkgrel=1
+pkgdesc="QBZ headless Qobuz playback daemon (odio, repackaged binary)"
+arch=('x86_64')
+url="https://github.com/vicrodh/qbz"
+license=('MIT')
+depends=('alsa-lib' 'openssl' 'glibc' 'gcc-libs')
+optdepends=('dbus: MPRIS media-control integration'
+            'pipewire: audio output')
+# Pas de conflits=('qbz') : qbz-bin (appli desktop Arch) ne livre que /usr/bin/qbz,
+# alors que ce paquet livre /usr/bin/qbzd — les deux coexistent.
+provides=('qbzd')
+source=("$pkgname-$pkgver.deb::https://apt.odio.love/pool/main/q/qbzd/qbzd_${pkgver}_amd64.deb")
+noextract=("$pkgname-$pkgver.deb")
+sha256sums=('SKIP')
+
+package() {
+  cd "$srcdir"
+  bsdtar -xf "$pkgname-$pkgver.deb"
+  bsdtar -xf data.tar.*
+  cp -a usr "$pkgdir/"
+}

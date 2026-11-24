@@ -1,12 +1,6 @@
 ---
-- name: Install upmpdcli-qobuz
-  ansible.builtin.apt:
-    name: upmpdcli-qobuz
-    state: present
-    install_recommends: false
-  become: true
-  when: "'qobuz' not in odios_prior_features"
-
+# Le plugin Qobuz est fourni par le paquet upmpdcli sur Arch
+# (/usr/share/upmpdcli/cdplugins/qobuz) — pas de paquet séparé à installer.
 - name: Configure qobuz user
   ansible.builtin.lineinfile:
     path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"

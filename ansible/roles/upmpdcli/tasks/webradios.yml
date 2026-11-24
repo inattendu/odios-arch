@@ -2,11 +2,10 @@
 - name: Web radio plugins (first activation)
   when: "'upnpwebradios' not in odios_prior_features"
   block:
-    - name: Install python3-pip
-      ansible.builtin.apt:
-        name: python3-pip
+    - name: Install python-pip
+      community.general.pacman:
+        name: python-pip
         state: present
-        install_recommends: false
       become: true
 
     - name: Install pyradios python package
@@ -15,18 +14,9 @@
         name: pyradios
       become: "{{ become_for_target_user }}"
       become_user: "{{ target_user }}"
-
-    - name: Install upmpdcli web radio plugins
-      ansible.builtin.apt:
-        name:
-          - upmpdcli-radios
-          - upmpdcli-radio-browser
-          - upmpdcli-radio-paradise
-          - upmpdcli-mother-earth-radio
-        state: present
-        install_recommends: false
-      become: true
-      notify: Restart upmpdcli
+    # Les plugins web radio (radios, radio-browser, radio-paradise,
+    # mother-earth-radio) sont fournis par le paquet upmpdcli sur Arch ; seule
+    # la lib python pyradios doit être installée (ci-dessus via pip).
 
     - name: Configure upmpdcli web radio plugins
       ansible.builtin.lineinfile:
