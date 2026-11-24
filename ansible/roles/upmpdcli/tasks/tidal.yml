@@ -2,11 +2,10 @@
 - name: Tidal plugin (first activation)
   when: "'tidal' not in odios_prior_features"
   block:
-    - name: Install python3-pip
-      ansible.builtin.apt:
-        name: python3-pip
+    - name: Install python-pip
+      community.general.pacman:
+        name: python-pip
         state: present
-        install_recommends: false
       become: true
 
     - name: Install tidalapi python package
@@ -15,13 +14,8 @@
         name: tidalapi
       become: "{{ become_for_target_user }}"
       become_user: "{{ target_user }}"
-
-    - name: Install upmpdcli-tidal
-      ansible.builtin.apt:
-        name: upmpdcli-tidal
-        state: present
-        install_recommends: false
-      become: true
+    # Le plugin Tidal est fourni par le paquet upmpdcli ; seule la lib python
+    # tidalapi doit être installée (ci-dessus via pip).
 
 - name: Configure tidal user
   ansible.builtin.lineinfile:

@@ -1,0 +1,36 @@
+# Maintainer: odios-arch fork
+# Port Arch du paquet .deb odio-api (apt.odio.love), même arborescence.
+pkgname=odio-api
+pkgver=0.18.2
+pkgrel=1
+pkgdesc="Web API for mpris, pulseaudio and systemd (odio)"
+arch=('x86_64')
+url="https://github.com/b0bbywan/go-odio-api"
+license=('BSD-2-Clause')
+depends=('glibc')
+makedepends=('go' 'git')
+_tag="v$pkgver"
+_twver="3.4.17"   # Tailwind CLI, version du Taskfile amont
+source=("$pkgname::git+https://github.com/b0bbywan/go-odio-api.git#tag=$_tag"
+        "tailwindcss-$_twver::https://github.com/tailwindlabs/tailwindcss/releases/download/v$_twver/tailwindcss-linux-x64")
+noextract=("tailwindcss-$_twver")
+sha256sums=('SKIP' 'SKIP')
+
+build() {
+  cd "$pkgname"
+  # Compiler le CSS Tailwind pour qu'il soit embarqué (go:embed ui/static) —
+  # sinon /ui/static/output.css renvoie 404 et l'UI est sans style.
+  install -m755 "$srcdir/tailwindcss-$_twver" ./tailwindcss
+  ./tailwindcss -i ui/styles/input.css -o ui/static/output.css --minify
+  export CGO_ENABLED=0 GOFLAGS="-trimpath -mod=mod"
+  go build -ldflags "-s -w -X 'github.com/b0bbywan/go-odio-api/config.AppVersion=$_tag'" \
+    -o odio-api .
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 odio-api "$pkgdir/usr/bin/odio-api"
+  install -Dm644 share/config.yaml "$pkgdir/usr/share/odio-api/config.yaml"
+  install -Dm644 debian/odio-api.service "$pkgdir/usr/lib/systemd/user/odio-api.service"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

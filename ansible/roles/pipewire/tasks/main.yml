@@ -1,12 +1,11 @@
 ---
 - name: Install PipeWire packages
-  ansible.builtin.apt:
+  community.general.pacman:
     name:
       - pipewire
       - pipewire-pulse
       - wireplumber
     state: present
-    install_recommends: false
   become: true
   notify: Restart pipewire-pulse
   when: ansible_role_name not in odios_prior_roles

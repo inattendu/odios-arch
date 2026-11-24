@@ -10,12 +10,11 @@
   when: ansible_role_name not in odios_prior_roles
   block:
     - name: Install MPD packages
-      ansible.builtin.apt:
+      community.general.pacman:
         name:
           - mpd
           - mpc
         state: present
-        install_recommends: false
       become: true
 
     - name: Disable system MPD service

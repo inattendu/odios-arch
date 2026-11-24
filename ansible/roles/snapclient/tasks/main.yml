@@ -10,10 +10,9 @@
   when: ansible_role_name not in odios_prior_roles
   block:
     - name: Install snapclient
-      ansible.builtin.apt:
-        name: snapclient
+      community.general.pacman:
+        name: snapcast
         state: present
-        install_recommends: false
       become: true
       notify: Restart snapclient
 

@@ -6,68 +6,22 @@
   vars:
     scaffold_version: '2026.5.0b1'
 
-- name: Remove upmpdcli apt sources
-  ansible.builtin.file:
-    path: /etc/apt/sources.list.d/upmpdcli.sources
-    state: absent
+# [odios] : dépôt pacman local (miroir Arch d'apt.odio.love) servant nos paquets
+# maison + AUR. Enregistré dans pacman.conf s'il manque. SigLevel TrustAll car
+# le dépôt local n'est pas signé.
+- name: Ensure odios pacman repo is registered
+  ansible.builtin.blockinfile:
+    path: /etc/pacman.conf
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - odios repo"
+    block: |
+      [odios]
+      SigLevel = Optional TrustAll
+      Server = {{ odios_repo_url }}
   become: true
 
-- name: APT key setup
-  when: ansible_role_name not in odios_prior_roles
-  block:
-    - name: Check odio gpg file
-      ansible.builtin.stat:
-        path: "{{ gpg_file }}"
-      register: common_gpg_stat
-
-    - name: Add apt.odio.love gpg key
-      ansible.builtin.get_url:
-        url: "{{ odio_gpg }}"
-        dest: /tmp/odio.gpg
-        mode: '0644'
-      when: not common_gpg_stat.stat.exists
-
-    - name: Dearmor GPG key
-      ansible.builtin.command:
-        cmd: "gpg --dearmor -o {{ gpg_file }} /tmp/odio.gpg"
-        creates: "{{ gpg_file }}"
-      become: true
-
-    - name: Copy odio apt source
-      ansible.builtin.template:
-        src: odio.sources.j2
-        dest: /etc/apt/sources.list.d/odio.sources
-        mode: '0644'
-        owner: root
-        group: root
-      become: true
-
-- name: Add odio testing apt source
-  ansible.builtin.template:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: '0644'
-    owner: root
-    group: root
-  become: true
-  loop:
-    - {src: odio-testing.sources.j2, dest: /etc/apt/sources.list.d/odio-testing.sources}
-    - {src: odio-testing.pref.j2, dest: /etc/apt/preferences.d/odio-testing}
-  when: odio_testing_repo | bool
-
-- name: Remove odio testing apt source
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  become: true
-  loop:
-    - /etc/apt/sources.list.d/odio-testing.sources
-    - /etc/apt/preferences.d/odio-testing
-  when: not odio_testing_repo | bool
-
-# Single apt update for the whole run; later roles must not re-update (except upmpdcli's ppa).
-- name: Update apt cache
-  ansible.builtin.apt:
+# Un seul refresh pour tout le run (les rôles suivants ne refont pas de -Sy).
+- name: Update pacman cache
+  community.general.pacman:
     update_cache: true
   become: true
 
@@ -91,7 +45,7 @@
   block:
     # Needed by become_user when invoker, root and target_user are three identities.
     - name: Install acl (needed by become_user)
-      ansible.builtin.apt:
+      community.general.pacman:
         name: acl
         state: present
       become: true

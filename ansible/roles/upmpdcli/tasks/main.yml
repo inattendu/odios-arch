@@ -3,10 +3,9 @@
   when: ansible_role_name not in odios_prior_roles
   block:
     - name: Install upmpdcli
-      ansible.builtin.apt:
+      community.general.pacman:
         name: upmpdcli
         state: present
-        install_recommends: false
       become: true
       notify: Restart upmpdcli
 

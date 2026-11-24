@@ -1,0 +1,32 @@
+# Maintainer: odios-arch fork
+# Port Arch du .deb odioctl. Reproduit units user, sudoers, groupes & dirs.
+pkgname=odioctl
+pkgver=0.4.2
+pkgrel=1
+pkgdesc="System control for odio: upgrades, components, DAC, web UI"
+arch=('x86_64')
+url="https://github.com/b0bbywan/odioctl"
+license=('BSD-2-Clause')
+depends=('glibc' 'sudo')
+optdepends=('curl: upgrade checks')
+makedepends=('go' 'git')
+install="$pkgname.install"
+_tag="v$pkgver"
+source=("$pkgname::git+https://github.com/b0bbywan/odioctl.git#tag=$_tag")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname"
+  export CGO_ENABLED=0 GOFLAGS="-trimpath -mod=mod"
+  go build -ldflags "-s -w -X 'github.com/b0bbywan/odioctl/config.AppVersion=$pkgver'" \
+    -o odioctl .
+}
+
+package() {
+  cd "$pkgname"
+  install -Dm755 odioctl "$pkgdir/usr/bin/odioctl"
+  install -dm755 "$pkgdir/usr/lib/systemd/user"
+  install -m644 data/systemd/user/* "$pkgdir/usr/lib/systemd/user/"
+  install -Dm440 data/sudoers/odioctl "$pkgdir/etc/sudoers.d/odioctl"
+  install -Dm644 LICENSE "$pkgdir/usr/share/doc/$pkgname/copyright"
+}

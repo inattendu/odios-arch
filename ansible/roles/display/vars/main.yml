@@ -11,5 +11,5 @@ display_services:
   - "odio-kiosk@odio.service"
 # odio-kiosk is built for these dpkg architectures only.
 display_archs:
-  - amd64
-  - arm64
+  - x86_64
+  - aarch64

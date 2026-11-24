@@ -7,7 +7,10 @@ bluetooth_group: "Audio"
 bluetooth_system_services:
   - bluetooth.service
 
-# A2DP codec support: a pulseaudio module vs pipewire's own SPA plugin.
+# A2DP codec support (listes concaténées à bluez/bluez-utils). PulseAudio a
+# besoin du module BT ; PipeWire gère le Bluetooth nativement (SPA intégré au
+# paquet pipewire), donc aucun paquet supplémentaire.
 bluetooth_audioserver_package:
-  pulseaudio: "pulseaudio-module-bluetooth"
-  pipewire: "libspa-0.2-bluetooth"
+  pulseaudio:
+    - pulseaudio-bluetooth
+  pipewire: []

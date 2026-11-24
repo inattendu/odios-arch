@@ -1,11 +1,10 @@
 ---
 - name: Install PulseAudio packages
-  ansible.builtin.apt:
+  community.general.pacman:
     name:
       - pulseaudio
-      - pulseaudio-module-zeroconf
+      - pulseaudio-zeroconf
     state: present
-    install_recommends: false
   become: true
   notify: Restart pulseaudio
   when: ansible_role_name not in odios_prior_roles

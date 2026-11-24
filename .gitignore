@@ -1,0 +1,20 @@
+# Artefacts de build makepkg (on ne versionne que les PKGBUILD + fichiers sources)
+packages/*/pkg/
+packages/*/src/
+packages/*/*.pkg.tar.*
+packages/*/*.tar.gz
+packages/*/*.tar.zst
+packages/*/*.deb
+packages/*/tailwindcss-*
+# clones de sources créés par makepkg (dossiers nommés d'après le pkgbase)
+packages/*/*/
+
+# Python
+**/__pycache__/
+*.pyc
+
+# Dépôt pacman local, logs, variables réelles, sauvegardes
+repo/
+*.log
+extra-vars.json
+*.conf.odios.bak.*

@@ -112,10 +112,9 @@
       when: not (install_mpd | bool)
 
 - name: Install mpd-discplayer v{{ mpd_discplayer_apt_version }}
-  ansible.builtin.apt:
-    name: "mpd-discplayer>={{ mpd_discplayer_apt_version }}"
+  community.general.pacman:
+    name: "mpd-discplayer"
     state: present
-    install_recommends: false
   become: true
   notify: Restart mpd-discplayer
 
