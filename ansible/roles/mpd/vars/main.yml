@@ -1,0 +1,26 @@
+---
+mpd_version: "2026.11.0rc1"
+mpd_mpd2mpris_apt_version: "0.13.1"
+mpd_mympd_apt_version: "26.0.0"
+mpd_label: "MPD"
+mpd_description: "Music library on USB drives, CDs and network shares"
+mpd_group: "Playback"
+# upmpdcli and mpd_discplayer play through it: dropping mpd would break them.
+mpd_required: true
+mpd_services:
+  - mpd.socket
+  - mpd.service
+  - mpd2mpris.service
+# Each one has an install_<feature> in group_vars and a prompt in install.sh.
+mpd_features:
+  mympd:
+    label: "myMPD"
+    description: "Web player for your music library and web radios"
+    services:
+      - mympd.service
+
+# MPD output plugin per audioserver: the native pipewire plugin when running
+# PipeWire, libpulse otherwise.
+mpd_audioserver_output:
+  pulseaudio: { type: "pulse", name: "pulseaudio" }
+  pipewire: { type: "pipewire", name: "pipewire" }

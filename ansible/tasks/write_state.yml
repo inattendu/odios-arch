@@ -1,0 +1,114 @@
+---
+# Optional roles = filesystem-listed roles with a matching install_<name>
+# in vars. common/upgrade are infrastructure (always run, never listed);
+# unwired roles (no install_<name>) are filtered out.
+- name: List role directories
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/roles"
+    file_type: directory
+    recurse: false
+  register: _odios_role_dirs
+
+- name: Build optional role list (excludes common/upgrade and unwired roles)
+  ansible.builtin.set_fact:
+    _odios_optional_roles: >-
+      {{ _odios_role_dirs.files | map(attribute='path') | map('basename')
+         | difference(['common', 'upgrade'])
+         | intersect(query('ansible.builtin.varnames', '^install_') | map('regex_replace', '^install_', ''))
+         | sort }}
+
+- name: Build list of installed roles
+  ansible.builtin.set_fact:
+    _odios_installed_roles: >-
+      {{ ['common', 'upgrade']
+         + (_odios_optional_roles
+            | zip(query('ansible.builtin.vars', *(_odios_optional_roles | map('regex_replace', '^', 'install_'))) | map('bool'))
+            | selectattr('1') | map(attribute='0') | list) }}
+
+# Track opt-outs so upgrades can distinguish "user said no" from "role
+# didn't exist yet" (latter falls back to install.sh's default).
+- name: Build list of excluded roles
+  ansible.builtin.set_fact:
+    _odios_excluded_roles: "{{ _odios_optional_roles | difference(_odios_installed_roles) }}"
+
+# Same split for sub-flags, the ones roles declare in <role>_features (what
+# the manifest's catalog publishes). Pure opt-out semantics on upgrade: only
+# features_excluded maps to N; everything else gets Y. Features of excluded
+# roles are left out of both lists (drops stale 2026.4.2b2 entries).
+- name: List features the installed roles declare
+  ansible.builtin.set_fact:
+    _odios_features: >-
+      {{ _odios_installed_roles
+         | map('regex_replace', '$', '_features') | select('in', _odios_all_role_vars)
+         | map('extract', _odios_all_role_vars) | map('list') | flatten | sort }}
+  vars:
+    _odios_all_role_vars: >-
+      {{ query('ansible.builtin.file', *(_odios_role_dirs.files | map(attribute='path')
+           | map('regex_replace', '$', '/vars/main.yml') | select('file')))
+         | map('from_yaml') | combine }}
+
+- name: Build list of enabled features
+  ansible.builtin.set_fact:
+    _odios_enabled_features: >-
+      {{ _odios_features
+         | zip(query('ansible.builtin.vars', *(_odios_features | map('regex_replace', '^', 'install_'))) | map('bool'))
+         | selectattr('1') | map(attribute='0') | list }}
+
+- name: Build list of excluded features
+  ansible.builtin.set_fact:
+    _odios_excluded_features: "{{ _odios_features | difference(_odios_enabled_features) }}"
+
+# Refresh every installed role's version from vars/main.yml. RUN_X=N
+# roles weren't re-installed but target == prior, so writing target is
+# a no-op. Downgrades (`--force --version=<older>`) write a stale
+# target — accepted, not a supported path.
+- name: Read installed role versions from vars/main.yml
+  ansible.builtin.set_fact:
+    _odios_merged_role_versions: >-
+      {{ dict(_odios_installed_roles
+         | zip(_odios_installed_roles | map('regex_replace', '$', '_version') | map('extract', _odios_role_vars))) }}
+  vars:
+    _odios_role_vars: >-
+      {{ query('ansible.builtin.file', *(_odios_installed_roles
+           | map('regex_replace', '^', playbook_dir ~ '/roles/')
+           | map('regex_replace', '$', '/vars/main.yml')))
+         | map('from_yaml') | combine }}
+
+- name: Assemble odios run payload
+  ansible.builtin.set_fact:
+    _odios_run:
+      odios: "{{ odio_version }}"
+      install_mode: "{{ install_mode }}"
+      target_user: "{{ target_user }}"
+      audioserver: "{{ audioserver }}"
+      mpd_music_directory: "{{ mpd_music_directory }}"
+      mpd_conf_path: "{{ '' if install_mpd | bool else (mpd_conf_path | default('')) }}"
+      roles: "{{ _odios_merged_role_versions }}"
+      roles_excluded: "{{ _odios_excluded_roles }}"
+      features: "{{ _odios_enabled_features }}"
+      features_excluded: "{{ _odios_excluded_features }}"
+
+# odioctl owns state.json: dirs (postinst), release_history, validation.
+- name: Record state.json
+  ansible.builtin.command: odioctl state record
+  args:
+    stdin: "{{ _odios_run | to_json }}"
+  become: true
+  changed_when: true
+
+# Live only: clears the stale "upgrade available" the previous report still
+# carries. Images get a fresh report from odios-firstboot-network instead.
+# Through the oneshot unit so the check reads /etc/default/odioctl and logs
+# to the journal like the timer run does.
+- name: Refresh /var/cache/odio/upgrades.json
+  ansible.builtin.systemd_service:
+    name: odio-check-upgrade.service
+    state: started
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ target_user_uid }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  changed_when: false
+  failed_when: false
+  when: install_mode == "live"

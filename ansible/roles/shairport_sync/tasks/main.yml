@@ -1,0 +1,142 @@
+---
+# odios_role_pre_scaffold: true on installs predating the pulseaudio TCP server
+# setting removal (shairport_sync 2026.4.1rc1).
+- name: Resolve prior role version
+  ansible.builtin.include_tasks: "../../../tasks/resolve_prior_version.yml"
+  vars:
+    scaffold_version: '2026.4.1rc1'
+
+- name: Shairport-sync install and config scaffolding (first install)
+  when: ansible_role_name not in odios_prior_roles
+  block:
+    - name: Install shairport-sync
+      ansible.builtin.apt:
+        name: shairport-sync
+        state: present
+        install_recommends: false
+      become: true
+      notify: Restart shairport-sync
+
+    - name: Create user shairport-sync config directory
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/.config/shairport-sync"
+        state: directory
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0755'
+      become: "{{ become_for_target_user }}"
+
+    - name: Copy shairport-sync system config to user directory
+      ansible.builtin.copy:
+        src: /etc/shairport-sync.conf
+        dest: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0600'
+        remote_src: true
+        force: false
+      become: "{{ become_for_target_user }}"
+
+- name: Backup shairport-sync config before changes
+  ansible.builtin.include_tasks: "../../../tasks/backup_conf_before.yml"
+  vars:
+    conf_path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    conf_owner: "{{ target_user }}"
+    conf_group: "{{ target_user }}"
+    conf_mode: '0600'
+
+- name: Configure shairport-sync name
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//\s*name\s*=\s*"%H"'
+    line: '	name = "%h";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Configure shairport-sync output backend
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//?\s*output_backend\s*='
+    line: '	output_backend = "{{ shairport_sync_audioserver_backend[audioserver] }}";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Configure shairport-sync mdns backend
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//?\s*mdns_backend\s*='
+    line: '	mdns_backend = "avahi";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Configure shairport-sync dbus service bus
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//?\s*dbus_service_bus\s*='
+    line: '	dbus_service_bus = "session";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Configure shairport-sync mpris service bus
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//?\s*mpris_service_bus\s*='
+    line: '	mpris_service_bus = "session";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Remove legacy shairport-sync pulseaudio TCP server setting
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*server\s*=\s*"127\.0\.0\.1"'
+    state: absent
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+  when:
+    - ansible_role_name in odios_prior_roles
+    - odios_role_pre_scaffold | bool
+
+- name: Configure shairport-sync application name
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    regexp: '^\s*//\s*application_name\s*=.*"Applications" tab'
+    line: '	application_name = "Shairport Sync";'
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart shairport-sync
+
+- name: Backup shairport-sync config after changes
+  ansible.builtin.include_tasks: "../../../tasks/backup_conf_after.yml"
+  vars:
+    conf_path: "/home/{{ target_user }}/.config/shairport-sync/shairport-sync.conf"
+    conf_owner: "{{ target_user }}"
+    conf_group: "{{ target_user }}"
+    conf_mode: '0600'
+
+- name: Deploy shairport-sync user service
+  ansible.builtin.copy:
+    src: shairport-sync.service
+    dest: /usr/lib/systemd/user/shairport-sync.service
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+
+- name: Shairport-sync service setup (first install)
+  when: ansible_role_name not in odios_prior_roles
+  block:
+    - name: Disable system shairport-sync service
+      ansible.builtin.include_tasks: "../../../tasks/systemd_disable_system.yml"
+      vars:
+        service_name: shairport-sync.service
+
+    - name: Enable user shairport-sync service
+      ansible.builtin.include_tasks: "../../../tasks/systemd_enable_user.yml"
+      vars:
+        service_name: shairport-sync.service

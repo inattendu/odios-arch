@@ -1,0 +1,24 @@
+---
+# Mask a systemd user service.
+# In image_build mode, uses global scope (no user session needed).
+# Variables:
+#   service_name: name of the service (e.g. pipewire.service)
+
+- name: Mask user service - live
+  ansible.builtin.systemd:
+    name: "{{ service_name }}"
+    masked: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ target_user_uid }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  when: install_mode == "live"
+
+- name: Mask user service - image build
+  ansible.builtin.systemd:
+    name: "{{ service_name }}"
+    masked: true
+    scope: global
+  become: true
+  when: install_mode == "image"

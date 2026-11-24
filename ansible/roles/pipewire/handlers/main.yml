@@ -1,0 +1,13 @@
+---
+- name: Restart pipewire-pulse
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+    scope: user
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ target_user_uid }}"
+  loop: "{{ pipewire_services | reject('search', '\\.socket$') | list }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  when: install_mode == "live"

@@ -1,0 +1,7 @@
+---
+common_version: "2026.10.0b3"
+common_label: "Base system"
+common_description: "Core system configuration"
+common_group: "System"
+common_required: true
+common_services: []

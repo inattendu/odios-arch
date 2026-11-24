@@ -1,0 +1,18 @@
+---
+upmpdcli_version: "2026.10.0b3"
+upmpdcli_label: "UPnP / DLNA"
+upmpdcli_description: "Play from UPnP and OpenHome control apps"
+upmpdcli_group: "Streaming"
+upmpdcli_services:
+  - upmpdcli.service
+# Each one has an install_<feature> in group_vars and a prompt in install.sh.
+upmpdcli_features:
+  tidal:
+    label: "Tidal"
+    description: "Tidal in UPnP control apps"
+  qobuz:
+    label: "Qobuz"
+    description: "Qobuz in UPnP control apps"
+  upnpwebradios:
+    label: "Web radios"
+    description: "Web radios in UPnP control apps"

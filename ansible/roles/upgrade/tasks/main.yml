@@ -1,0 +1,143 @@
+---
+# odios_role_pre_scaffold: true on installs predating the odioctl package
+# (2026.9.0b1), which shipped odio-upgrade as a local script with hand-written
+# units and sudoers. Also covers the older per-user layout (≤ 2026.5.0b1).
+- name: Resolve prior role version
+  ansible.builtin.include_tasks: "../../../tasks/resolve_prior_version.yml"
+  vars:
+    scaffold_version: '2026.9.0b1'
+
+# True on installs predating odioctl-web-proxy.socket (2026.10.0b1), fresh ones included.
+- name: Resolve odioctl-web proxy socket migration
+  ansible.builtin.set_fact:
+    upgrade_pre_proxy_socket: >-
+      {{ odios_prior_role_versions[ansible_role_name] | default('0')
+         is version('2026.10.0b1', '<', version_type='pep440') }}
+
+- name: Clean up pre-odioctl upgrade artifacts
+  when:
+    - ansible_role_name in odios_prior_roles
+    - odios_role_pre_scaffold | bool
+  block:
+    - name: Remove legacy per-user upgrade scripts and units
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/{{ item }}"
+        state: absent
+      become: "{{ become_for_target_user }}"
+      loop:
+        - .local/bin/odio-check-upgrade
+        - .local/bin/odio-upgrade
+        - .config/systemd/user/odio-check-upgrade.service
+        - .config/systemd/user/odio-check-upgrade.timer
+        - .config/systemd/user/odio-upgrade.service
+        - .config/systemd/user/default.target.wants/odio-check-upgrade.timer
+        # Stale enable symlink pointing at the removed /etc/systemd/user copy.
+        - .config/systemd/user/timers.target.wants/odio-check-upgrade.timer
+
+    # /etc/systemd/user shadows the deb's /usr/lib/systemd/user units, so these
+    # must go or the node keeps calling the deleted /usr/local/bin/odio-upgrade.
+    - name: Remove legacy system-wide upgrade artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      register: upgrade_legacy_cleanup
+      loop:
+        - /usr/local/bin/odio-check-upgrade
+        - /usr/local/bin/odio-upgrade
+        - /etc/sudoers.d/010_odio-upgrade
+        - /etc/systemd/user/odio-check-upgrade.service
+        - /etc/systemd/user/odio-check-upgrade.timer
+        - /etc/systemd/user/odio-upgrade.service
+
+# Ships /usr/bin/odioctl, the user units and /etc/sudoers.d/odioctl. Units are
+# not auto-enabled by the postinst, which does create the empty `odioctl` group.
+- name: Install odioctl v{{ upgrade_odioctl_apt_version }}
+  ansible.builtin.apt:
+    name: "odioctl>={{ upgrade_odioctl_apt_version }}"
+    state: present
+  become: true
+  register: upgrade_odioctl_apt
+  notify:
+    - Start odioctl-web-proxy socket
+    - Restart odioctl-web
+
+# Migration path: common seeds this group on first install, before linger
+# starts the user manager, but its first-install block never re-runs on an
+# existing node. A manager already up keeps its old group list, so here the
+# membership only takes effect on target_user's next login.
+- name: Add target user to the odioctl group
+  ansible.builtin.user:
+    name: "{{ target_user }}"
+    append: true
+    groups: [odioctl]
+  become: true
+  when: odios_role_pre_scaffold | bool
+
+# User scope: a root daemon-reload won't reach the target user's manager, which
+# still holds the removed /etc/systemd/user copies. Image mode has no running
+# manager (units load at boot).
+- name: Reload user systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ target_user_uid }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  when:
+    - install_mode == "live"
+    - upgrade_odioctl_apt.changed or upgrade_legacy_cleanup.changed | default(false)
+
+- name: Enable odio-check-upgrade timer
+  ansible.builtin.include_tasks: "../../../tasks/systemd_enable_user.yml"
+  vars:
+    service_name: odio-check-upgrade.timer
+    wanted_by: timers.target
+  when: odios_role_pre_scaffold | bool
+
+# odioctl-web-proxy.socket replaces odioctl-web.socket. Socket first so it
+# can't reactivate the service; stopped service lets the new socket take over.
+- name: Retire odioctl-web socket
+  when:
+    - ansible_role_name in odios_prior_roles
+    - upgrade_pre_proxy_socket | bool
+  block:
+    - name: Disable odioctl-web socket
+      ansible.builtin.include_tasks: "../../../tasks/systemd_disable_user.yml"
+      vars:
+        service_name: odioctl-web.socket
+        wanted_by: sockets.target
+
+    - name: Stop odioctl-web
+      ansible.builtin.include_tasks: "../../../tasks/systemd_stop_user.yml"
+      vars:
+        service_name: odioctl-web.service
+
+# The socket pulls odioctl-web.service in on the first connection; the service
+# itself has no [Install]. Enabling does not bind it, so the apt task notifies
+# a handler to start it.
+- name: Enable odioctl-web-proxy socket
+  ansible.builtin.include_tasks: "../../../tasks/systemd_enable_user.yml"
+  vars:
+    service_name: odioctl-web-proxy.socket
+    wanted_by: sockets.target
+  when: upgrade_pre_proxy_socket | bool
+
+- name: Install unattended-upgrades (image mode)
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+    install_recommends: false
+  become: true
+  when: install_mode == "image"
+
+- name: Allow Raspberry Pi archive in unattended-upgrades (image mode)
+  ansible.builtin.copy:
+    src: 52odio-unattended-upgrades
+    dest: /etc/apt/apt.conf.d/52odio-unattended-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when: install_mode == "image"

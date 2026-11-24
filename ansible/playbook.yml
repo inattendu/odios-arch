@@ -1,0 +1,173 @@
+---
+- name: Odio Streamer Installation
+  hosts: localhost
+
+  # Skip the slow hardware fact probe (unused by odios); costly on armhf.
+  gather_subset:
+    - min
+    - network
+    - virtual
+
+  # force-unsafe-io: skip dpkg's per-file fsync (brutal on SD cards) for the
+  # whole run. Default dpkg_options is force-confdef,force-confold — extend it.
+  module_defaults:
+    ansible.builtin.apt:
+      dpkg_options: force-confdef,force-confold,force-unsafe-io
+
+  vars_files:
+    - group_vars/all.yml
+
+  pre_tasks:
+    - name: Ensure install_mode is valid
+      ansible.builtin.fail:
+        msg: "install_mode must be 'live' or 'image', got: '{{ install_mode }}'"
+      when: install_mode not in ["live", "image"]
+
+    - name: Ensure audioserver is valid
+      ansible.builtin.fail:
+        msg: "audioserver must be 'pulseaudio' or 'pipewire', got: '{{ audioserver }}'"
+      when: audioserver not in ["pulseaudio", "pipewire"]
+
+    - name: Ensure target user is not root
+      ansible.builtin.fail:
+        msg: "target_user must not be root"
+      when: target_user == "root"
+
+    # Computed early so pre_tasks (remote_tmp) and every role can gate become
+    # on it. False when the invoker already is target_user — no become needed.
+    - name: Detect become requirement for target user
+      ansible.builtin.set_fact:
+        become_for_target_user: "{{ target_user != ansible_user_id }}"
+
+    - name: Ensure dbus running
+      ansible.builtin.systemd:
+        name: dbus.service
+        state: started
+      become: true
+      when: install_mode == "live"
+
+    - name: Set hostname
+      ansible.builtin.include_tasks: "tasks/set_hostname.yml"
+      when: target_hostname | length > 0
+
+    - name: Create target user
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        shell: /bin/bash
+        create_home: true
+        state: present
+      become: true
+      when: target_user != ansible_user_id
+
+    - name: Create ansible remote_tmp directory
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/.ansible/tmp"
+        state: directory
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0700'
+      become: true
+      when: become_for_target_user
+
+    - name: Get target user UID
+      ansible.builtin.command:
+        cmd: "id -u {{ target_user }}"
+      register: common_user_uid_result
+      changed_when: false
+
+    - name: Detect variables
+      ansible.builtin.set_fact:
+        system_arch: "{{ ansible_architecture }}"
+        target_user_uid: "{{ common_user_uid_result.stdout }}"
+
+    # Sets `is_headless` once for the whole run — bluetooth, odio_api, and
+    # mpd_discplayer all consume it to decide between graphical and headless
+    # polkit/udev policies. Lifted out of individual roles so smart-upgrade
+    # skipping bluetooth+odio_api doesn't leave the fact unset for
+    # mpd_discplayer (or any future consumer).
+    - name: Detect graphical session
+      ansible.builtin.include_tasks: "tasks/check_graphical_session.yml"
+
+    - name: Read prior install state
+      ansible.builtin.include_tasks: "tasks/read_state.yml"
+
+  roles:
+    - role: common
+      when: run_common | bool
+    - role: upgrade
+      when: run_upgrade | bool
+    - role: branding
+      when: run_branding | bool
+    - role: pulseaudio
+      when: run_pulseaudio | bool
+    - role: pipewire
+      when: run_pipewire | bool
+    - role: bluetooth
+      when: run_bluetooth | bool
+    - role: mpd
+      when: run_mpd | bool
+    - role: mpd_discplayer
+      when: run_mpd_discplayer | bool
+    - role: shairport_sync
+      when: run_shairport_sync | bool
+    - role: snapclient
+      when: run_snapclient | bool
+    - role: upmpdcli
+      when: run_upmpdcli | bool
+    - role: spotifyd
+      when: run_spotifyd | bool
+    - role: qbzd
+      when: run_qbzd | bool
+    - role: display
+      when: run_display | bool
+    - role: odio_api
+      when: run_odio_api | bool
+
+  post_tasks:
+    - name: Verify services are running
+      ansible.builtin.include_tasks: "tasks/verify_services.yml"
+
+    # After the health-check: a failed run records nothing, so the upgrade stays pending.
+    - name: Write installation state
+      ansible.builtin.include_tasks: "tasks/write_state.yml"
+
+    # Last — write_state.yml starts odio-check-upgrade.service as target_user,
+    # which ansible needs the per-user tmp dir for. Removing it earlier would just
+    # cause ansible to recreate it (with a warning).
+    - name: Remove ansible remote_tmp directory
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/.ansible/tmp"
+        state: absent
+      become: true
+      when: become_for_target_user
+
+    - name: Display installation summary
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════"
+          - "  odio Streaming System - Installation Complete  "
+          - "═══════════════════════════════════════════════════"
+          - ""
+          - "Hostname: {{ target_hostname }}"
+          - "User: {{ target_user }}"
+          - ""
+          - "Services installed:"
+          - "  {{ '✓' if install_audioserver else '✗' }} {{ 'PipeWire' if audioserver == 'pipewire' else 'PulseAudio' }} with network streaming"
+          - "  {{ '✓' if install_bluetooth else '✗' }} Bluetooth audio (A2DP sink)"
+          - "  {{ '✓' if install_mpd else '✗' }} MPD (Music Player Daemon)"
+          - "  {{ '✓' if install_mympd else '✗' }} myMPD (web UI)"
+          - "  {{ '✓' if install_odio_api else '✗' }} Odio API (REST control interface)"
+          - "  {{ '✓' if install_mpd_discplayer else '✗' }} MPD disc player"
+          - "  {{ '✓' if install_shairport_sync else '✗' }} Shairport Sync (AirPlay)"
+          - "  {{ '✓' if install_snapclient else '✗' }} Snapcast client"
+          - "  {{ '✓' if install_upmpdcli else '✗' }} UPnP/DLNA renderer"
+          - "  {{ '✓' if install_upnpwebradios else '✗' }} UPnP web radios"
+          - "  {{ '✓' if install_spotifyd else '✗' }} Spotifyd (Spotify Connect)"
+          - "  {{ '✓' if install_qbzd else '✗' }} qbzd (Qobuz Connect) — run `qbzd setup` to log in"
+          - "  {{ '✓' if install_display else '✗' }} Kiosk browser"
+          - ""
+          - "System should already be running !"
+          - "Visit http://{{ ansible_default_ipv4.address | default('localhost') }}:8018/ui"
+          - "   📲 https://pwa.odio.love{{ '/#/i/' ~ ansible_default_ipv4.address if ansible_default_ipv4 is defined else '' }}"
+          - ""
+          - "═══════════════════════════════════════════════════"

@@ -1,0 +1,128 @@
+---
+- name: Upmpdcli repo and config scaffolding (first install)
+  when: ansible_role_name not in odios_prior_roles
+  block:
+    - name: Install upmpdcli
+      ansible.builtin.apt:
+        name: upmpdcli
+        state: present
+        install_recommends: false
+      become: true
+      notify: Restart upmpdcli
+
+    - name: Create user upmpdcli config directory
+      ansible.builtin.file:
+        path: "/home/{{ target_user }}/.config/upmpdcli"
+        state: directory
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0755'
+      become: "{{ become_for_target_user }}"
+
+    - name: Copy upmpdcli system config to user directory
+      ansible.builtin.copy:
+        src: /etc/upmpdcli.conf
+        dest: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0600'
+        remote_src: true
+        force: false
+      become: "{{ become_for_target_user }}"
+
+- name: Backup upmpdcli config before changes
+  ansible.builtin.include_tasks: "../../../tasks/backup_conf_before.yml"
+  vars:
+    conf_path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    conf_owner: "{{ target_user }}"
+    conf_group: "{{ target_user }}"
+    conf_mode: '0600'
+
+- name: Configure upmpdcli friendly name
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    regexp: '^#?avfriendlyname\s*='
+    line: "avfriendlyname = UpMpd/AV-{{ target_hostname }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart upmpdcli
+
+- name: Configure upmpdcli upnpav
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    regexp: '^#?upnpav\s*='
+    line: "upnpav = 1"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart upmpdcli
+
+- name: Configure upmpdcli openhome
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    regexp: '^#?openhome\s*='
+    line: "openhome = 1"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart upmpdcli
+
+- name: Configure upmpdcli mpdhost
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    regexp: '^#?mpdhost\s*='
+    line: "mpdhost = localhost"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart upmpdcli
+
+- name: Configure upmpdcli mpdport
+  ansible.builtin.lineinfile:
+    path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    regexp: '^#?mpdport\s*='
+    line: "mpdport = 6600"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  notify: Restart upmpdcli
+
+- name: Configure Qobuz streaming
+  ansible.builtin.include_tasks: qobuz.yml
+  when: install_qobuz | bool
+
+- name: Configure Deezer streaming
+  ansible.builtin.include_tasks: deezer.yml
+  when: deezer_user is defined and deezer_user | length > 0
+
+- name: Configure Tidal streaming
+  ansible.builtin.include_tasks: tidal.yml
+  when: install_tidal | bool
+
+- name: Configure UPnP web radios
+  ansible.builtin.include_tasks: webradios.yml
+  when: install_upnpwebradios | bool
+
+- name: Backup upmpdcli config after changes
+  ansible.builtin.include_tasks: "../../../tasks/backup_conf_after.yml"
+  vars:
+    conf_path: "/home/{{ target_user }}/.config/upmpdcli/upmpdcli.conf"
+    conf_owner: "{{ target_user }}"
+    conf_group: "{{ target_user }}"
+    conf_mode: '0600'
+
+- name: Disable upmpdcli system service
+  ansible.builtin.include_tasks: "../../../tasks/systemd_disable_system.yml"
+  vars:
+    service_name: upmpdcli.service
+  when: ansible_role_name not in odios_prior_roles
+
+- name: Deploy upmpdcli user service
+  ansible.builtin.copy:
+    src: upmpdcli.service
+    dest: "/usr/lib/systemd/user/upmpdcli.service"
+    mode: '0644'
+  become: true
+  notify: Restart upmpdcli
+
+- name: Enable user upmpdcli service
+  ansible.builtin.include_tasks: "../../../tasks/systemd_enable_user.yml"
+  vars:
+    service_name: upmpdcli.service
+  when: ansible_role_name not in odios_prior_roles

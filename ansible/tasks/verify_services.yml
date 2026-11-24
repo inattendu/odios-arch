@@ -1,0 +1,102 @@
+---
+# Post-install health-check: every service that a role's handlers start/restart
+# must end up active. In image_build mode the session has no running services,
+# so skip the whole check.
+
+- name: Skip service health-check in image-build mode
+  ansible.builtin.debug:
+    msg: "install_mode={{ install_mode }} — skipping service health-check"
+  when: install_mode != "live"
+
+- name: Detect container environment (relax system-service checks)
+  ansible.builtin.set_fact:
+    _odios_in_container: "{{ ansible_facts.virtualization_type | default('') == 'docker' }}"
+  when: install_mode == "live"
+
+- name: Compute expected system services
+  ansible.builtin.set_fact:
+    _odios_expected_system_services: >-
+      {{ (['bluetooth.service'] if install_bluetooth | bool else []) }}
+  when: install_mode == "live"
+
+# pulseaudio needs real audio hardware to stay up — in docker it starts and dies
+# right back, so pulse-tcp is dropped there; real-system coverage comes from
+# test-install / test-upgrade. pipewire has no such trouble and is always checked.
+- name: Compute expected user services
+  ansible.builtin.set_fact:
+    _odios_expected_user_services: >-
+      {{
+        (['pulseaudio.service'] if install_pulseaudio | bool else [])
+        + (['pulse-tcp.service'] if install_pulseaudio | bool and not _odios_in_container else [])
+        + (['pipewire.service', 'pipewire-pulse.service', 'wireplumber.service']
+           if install_pipewire | bool else [])
+        + (['mpd.service', 'mpd2mpris.service'] if install_mpd  | bool else [])
+        + (['mpd-discplayer.service'] if install_mpd_discplayer | bool else [])
+        + (['mympd.service']          if install_mympd          | bool else [])
+        + (['shairport-sync.service'] if install_shairport_sync | bool else [])
+        + (['upmpdcli.service']       if install_upmpdcli       | bool else [])
+        + (['spotifyd.service']       if install_spotifyd       | bool else [])
+        + (['qbzd.service']           if install_qbzd           | bool else [])
+        + (['odio-kiosk@odio.service'] if install_display       | bool else [])
+        + (['snapclient.service', 'snapclientmpris.service'] if install_snapclient | bool else [])
+        + (['odio-api.service']       if install_odio_api       | bool else [])
+      }}
+  when: install_mode == "live"
+
+# A role re-enabled with an unchanged config fires no handler: start what is
+# inactive, a failed start fails the run.
+- name: Verify system services
+  become: true
+  when:
+    - install_mode == "live"
+    - not _odios_in_container
+  block:
+    - name: Verify system services are active  # noqa command-instead-of-module
+      ansible.builtin.command: "systemctl is-active {{ item }}"
+      register: _sys_svc_check
+      changed_when: false
+      failed_when: _sys_svc_check.rc != 0
+      loop: "{{ _odios_expected_system_services }}"
+  rescue:
+    - name: Start the system services found inactive
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ _sys_svc_check.results | rejectattr('rc', 'eq', 0) | map(attribute='item') }}"
+
+- name: Verify system services are enabled (container fallback)  # noqa command-instead-of-module
+  ansible.builtin.command: "systemctl is-enabled {{ item }}"
+  register: _sys_svc_enabled
+  changed_when: false
+  failed_when: _sys_svc_enabled.rc != 0
+  loop: "{{ _odios_expected_system_services }}"
+  become: true
+  when:
+    - install_mode == "live"
+    - _odios_in_container
+
+- name: Verify user services
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ target_user_uid }}"
+  become: "{{ become_for_target_user }}"
+  become_user: "{{ target_user }}"
+  when: install_mode == "live"
+  block:
+    - name: Verify user services are active  # noqa command-instead-of-module
+      ansible.builtin.command: "systemctl --user is-active {{ item }}"
+      register: _user_svc_check
+      changed_when: false
+      failed_when: _user_svc_check.rc != 0
+      loop: "{{ _odios_expected_user_services }}"
+  rescue:
+    - name: Start the user services found inactive
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        scope: user
+      loop: "{{ _user_svc_check.results | rejectattr('rc', 'eq', 0) | map(attribute='item') }}"
+
+- name: Health-check summary
+  ansible.builtin.debug:
+    msg: "Health-check passed: {{ _odios_expected_system_services | length }} system + {{ _odios_expected_user_services | length }} user services active"
+  when: install_mode == "live"

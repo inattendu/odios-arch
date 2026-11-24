@@ -1,0 +1,74 @@
+---
+# Sets odios_prior_roles, odios_prior_role_versions and odios_prior_features.
+- name: Read existing state through odioctl
+  ansible.builtin.command: odioctl state show
+  register: _odios_state_show
+  become: true
+  changed_when: false
+  failed_when: _odios_state_show.rc not in [0, 2, 3]
+
+# rc 2: odioctl predates `state show` (every upgrade from 0.3.x, since the
+# upgrade role runs later) or isn't installed (ansible reports ENOENT as 2).
+# Pre-2b1 odios have no odioctl, so their legacy paths are read here too.
+- name: Read state.json directly (odioctl without state show)
+  ansible.builtin.slurp:
+    src: /var/lib/odio/state.json
+  register: _odios_state_file
+  become: true
+  failed_when: false
+  when: _odios_state_show.rc == 2
+
+- name: Read existing state.json (2b1-era /var/cache migration path)
+  ansible.builtin.slurp:
+    src: /var/cache/odio/state.json
+  register: _odios_state_cache
+  become: true
+  failed_when: false
+  when:
+    - _odios_state_show.rc == 2
+    - _odios_state_file.content is not defined
+
+- name: Read existing state.json (pre-2b1 per-user path)
+  ansible.builtin.slurp:
+    src: "/home/{{ target_user }}/.cache/odio/state.json"
+  register: _odios_state_legacy
+  become: "{{ become_for_target_user }}"
+  failed_when: false
+  when:
+    - _odios_state_show.rc == 2
+    - _odios_state_file.content is not defined
+    - _odios_state_cache.content is not defined
+
+- name: Parse existing state
+  ansible.builtin.set_fact:
+    _odios_existing_state: >-
+      {{ (_odios_state_show.stdout | from_json) if _odios_state_show.rc == 0
+         else ([_odios_state_file, _odios_state_cache, _odios_state_legacy]
+               | selectattr('content', 'defined') | map(attribute='content')
+               | reject('eq', '') | map('b64decode') | map('from_json')
+               | first | default({})) }}
+
+# odioctl records an opt-in role enabled from the UI as roles[name] = ""
+# (requested, not installed yet): treat it as absent for the scaffold gates.
+- name: Prior role versions (introduced-in gate)
+  ansible.builtin.set_fact:
+    odios_prior_role_versions: >-
+      {{ _odios_existing_state.roles | default({}) | dict2items
+         | rejectattr('value', 'eq', '') | items2dict }}
+
+- name: List roles present in prior state (install-vs-upgrade gate)
+  ansible.builtin.set_fact:
+    odios_prior_roles: "{{ odios_prior_role_versions.keys() | list }}"
+
+- name: List features present in prior state (feature-vs-new gate)
+  ansible.builtin.set_fact:
+    odios_prior_features: "{{ _odios_existing_state.features | default([]) }}"
+
+# `odioctl upgrade apply --reinstall` sets this: blank the prior facts so every role runs
+# its first-install scaffold (and version-gated migrations) as if fresh.
+- name: Force full scaffold (reinstall)
+  ansible.builtin.set_fact:
+    odios_prior_roles: []
+    odios_prior_features: []
+    odios_prior_role_versions: {}
+  when: odios_force_scaffold | default(false) | bool

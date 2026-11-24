@@ -1,0 +1,21 @@
+---
+- name: Install snapclientmpris
+  ansible.builtin.apt:
+    name: "snapclientmpris>={{ snapclient_snapclientmpris_version }}"
+    state: present
+    install_recommends: false
+  become: true
+  notify: Restart snapclientmpris
+
+- name: Snapclientmpris scaffold
+  when: odios_role_pre_scaffold | bool
+  block:
+    - name: Lower snapclientmpris startup CPU weight
+      ansible.builtin.include_tasks: "../../../tasks/systemd_startup_weight_user.yml"
+      vars:
+        service_name: snapclientmpris.service
+
+    - name: Enable user snapclientmpris service
+      ansible.builtin.include_tasks: "../../../tasks/systemd_enable_user.yml"
+      vars:
+        service_name: snapclientmpris.service

@@ -1,0 +1,15 @@
+---
+display_version: "2026.10.0b3"
+display_apt_version: "2.0.1"
+display_label: "Screen"
+display_description: "Web dashboard on an attached screen (experimental)"
+display_group: "System"
+# The unit is a template, one instance per screen; a node has the one.
+display_instance: "odio"
+# Literal: build-manifest.py does not render Jinja; keep in sync with display_instance.
+display_services:
+  - "odio-kiosk@odio.service"
+# odio-kiosk is built for these dpkg architectures only.
+display_archs:
+  - amd64
+  - arm64
